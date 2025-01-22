@@ -1,5 +1,5 @@
 const express = require("express");
-const connectDB = require("./config/db");
+const connectDB = require("./src/config/db");
 const cors = require("cors");
 const path = require("path");
 require("dotenv").config();
@@ -14,9 +14,9 @@ app.use(express.json({ extended: false }));
 app.use(cors());
 
 // Define Routes
-app.use("/api/auth", require("./routes/auth"));
-app.use("/api/tasks", require("./routes/tasks"));
-app.use("/api/posts", require("./routes/posts"));
+app.use("/api/auth", require("./src/routes/auth"));
+app.use("/api/tasks", require("./src/routes/tasks"));
+app.use("/api/posts", require("./src/routes/posts"));
 
 // Serve static assets in production
 if (process.env.NODE_ENV === "production") {

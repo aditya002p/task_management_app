@@ -9,6 +9,19 @@ const { OAuth2Client } = require("google-auth-library");
 
 const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
 
+// @route   GET api/auth/user
+// @desc    Get authenticated user
+// @access  Private
+router.get("/user", auth, async (req, res) => {
+  try {
+    const user = await User.findById(req.user.id).select("-password");
+    res.json(user);
+  } catch (err) {
+    console.error(err.message);
+    res.status(500).send("Server error");
+  }
+});
+
 // @route   POST api/auth/register
 // @desc    Register user
 // @access  Public
@@ -60,7 +73,10 @@ router.post(
         { expiresIn: "5h" },
         (err, token) => {
           if (err) throw err;
-          res.json({ token });
+          res.json({
+            token,
+            user: { id: user.id, name: user.name, email: user.email },
+          });
         }
       );
     } catch (err) {
@@ -112,7 +128,10 @@ router.post(
         { expiresIn: "5h" },
         (err, token) => {
           if (err) throw err;
-          res.json({ token });
+          res.json({
+            token,
+            user: { id: user.id, name: user.name, email: user.email },
+          });
         }
       );
     } catch (err) {
@@ -126,25 +145,29 @@ router.post(
 // @desc    Google OAuth login/register
 // @access  Public
 router.post("/google", async (req, res) => {
-  const { token } = req.body;
+  const { access_token } = req.body;
 
   try {
-    const ticket = await client.verifyIdToken({
-      idToken: token,
-      audience: process.env.GOOGLE_CLIENT_ID,
-    });
+    // Fetch the user's profile with the access token
+    const response = await fetch(
+      `https://www.googleapis.com/oauth2/v3/userinfo?access_token=${access_token}`
+    );
+    const data = await response.json();
 
-    const { name, email, sub: googleId } = ticket.getPayload();
+    if (!data.email_verified) {
+      return res.status(400).json({ msg: "Google account not verified" });
+    }
 
-    let user = await User.findOne({ email });
+    let user = await User.findOne({ email: data.email });
 
     if (!user) {
-      const password = await bcrypt.hash(googleId, 10);
+      // Create new user if they don't exist
+      const password = await bcrypt.hash(data.sub + process.env.JWT_SECRET, 10);
       user = new User({
-        name,
-        email,
-        password,
-        googleId,
+        name: data.name,
+        email: data.email,
+        password, // Random secure password
+        googleId: data.sub,
       });
       await user.save();
     }
@@ -161,12 +184,15 @@ router.post("/google", async (req, res) => {
       { expiresIn: "5h" },
       (err, token) => {
         if (err) throw err;
-        res.json({ token });
+        res.json({
+          token,
+          user: { id: user.id, name: user.name, email: user.email },
+        });
       }
     );
   } catch (err) {
-    console.error(err.message);
-    res.status(500).send("Server error");
+    console.error("Google auth error:", err.message);
+    res.status(500).json({ msg: "Google authentication failed" });
   }
 });
 
