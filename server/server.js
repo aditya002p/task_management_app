@@ -67,7 +67,7 @@ if (process.env.NODE_ENV === "production") {
   });
 }
 
-const PORT = process.env.PORT || 6000;
+const PORT = process.env.PORT || 5000;
 
 // Handle unhandled promise rejections
 process.on("unhandledRejection", (err) => {
