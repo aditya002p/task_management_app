@@ -6,6 +6,11 @@ import {
   Alert,
   Paper,
   CircularProgress,
+  Dialog,
+  DialogTitle,
+  DialogContent,
+  DialogActions,
+  Button,
 } from "@mui/material";
 import {
   DndContext,
@@ -13,10 +18,13 @@ import {
   useSensors,
   useSensor,
   PointerSensor,
-  rectIntersection,
 } from "@dnd-kit/core";
-import { SortableContext, verticalListSortingStrategy } from "@dnd-kit/sortable";
-import axios from "axios";
+import {
+  SortableContext,
+  verticalListSortingStrategy,
+} from "@dnd-kit/sortable";
+import { useAuth } from "../../context/AuthContext";
+import api from "../../utils/api";
 import TaskForm from "./TaskForm";
 import TaskCard from "./TaskCard";
 
@@ -28,7 +36,8 @@ const columnColors = {
   pending: "#ffffff",
 };
 
-const TaskBoard = () => {
+export default function TaskBoard() {
+  const { isAuthenticated } = useAuth();
   const [tasks, setTasks] = useState({
     pending: [],
     completed: [],
@@ -37,6 +46,10 @@ const TaskBoard = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [activeId, setActiveId] = useState(null);
+  const [activeTask, setActiveTask] = useState(null);
+  const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
+  const [taskToDelete, setTaskToDelete] = useState(null);
+  const [updateLoading, setUpdateLoading] = useState(false);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -47,16 +60,19 @@ const TaskBoard = () => {
   );
 
   useEffect(() => {
-    fetchTasks();
-  }, []);
+    if (isAuthenticated) {
+      fetchTasks();
+    }
+  }, [isAuthenticated]);
 
   const fetchTasks = async () => {
     try {
-      const res = await axios.get("/api/tasks");
+      setLoading(true);
+      const response = await api.get("/tasks");
       const categorizedTasks = {
-        pending: res.data.filter((task) => task.status === "pending"),
-        completed: res.data.filter((task) => task.status === "completed"),
-        done: res.data.filter((task) => task.status === "done"),
+        pending: response.data.filter((task) => task.status === "pending"),
+        completed: response.data.filter((task) => task.status === "completed"),
+        done: response.data.filter((task) => task.status === "done"),
       };
       setTasks(categorizedTasks);
       setError("");
@@ -68,101 +84,155 @@ const TaskBoard = () => {
     }
   };
 
-  const findTaskContainer = (id) => {
+  const findContainer = (id) => {
     if (!id) return null;
-    
-    const container = Object.keys(tasks).find(key => 
-      tasks[key].some(task => task._id === id)
+    return STATUSES.find((status) =>
+      tasks[status].some((task) => task._id === id)
     );
-    return container;
   };
 
   const handleDragStart = (event) => {
     const { active } = event;
     setActiveId(active.id);
+    const activeContainer = findContainer(active.id);
+    const task = tasks[activeContainer].find((task) => task._id === active.id);
+    setActiveTask(task);
+  };
+
+  const updateTaskStatus = async (taskId, newStatus, oldStatus) => {
+    setUpdateLoading(true);
+    try {
+      // Optimistically update the UI
+      setTasks((prev) => {
+        const task = prev[oldStatus].find((t) => t._id === taskId);
+        if (!task) return prev;
+
+        return {
+          ...prev,
+          [oldStatus]: prev[oldStatus].filter((t) => t._id !== taskId),
+          [newStatus]: [{ ...task, status: newStatus }, ...prev[newStatus]],
+        };
+      });
+
+      // Make API call
+      await api.put(`/tasks/${taskId}`, { status: newStatus });
+    } catch (err) {
+      // Revert the state if API call fails
+      setError("Failed to update task status");
+      console.error("Error updating task status:", err);
+
+      // Revert the optimistic update
+      setTasks((prev) => {
+        const task = prev[newStatus].find((t) => t._id === taskId);
+        if (!task) return prev;
+
+        return {
+          ...prev,
+          [newStatus]: prev[newStatus].filter((t) => t._id !== taskId),
+          [oldStatus]: [{ ...task, status: oldStatus }, ...prev[oldStatus]],
+        };
+      });
+    } finally {
+      setUpdateLoading(false);
+    }
   };
 
   const handleDragOver = (event) => {
     const { active, over } = event;
-    
-    if (!over || !active) return;
+    if (!over) return;
 
-    const activeContainer = findTaskContainer(active.id);
-    const overContainer = STATUSES.includes(over.id) ? over.id : findTaskContainer(over.id);
+    const activeContainer = findContainer(active.id);
+    const overContainer = STATUSES.includes(over.id)
+      ? over.id
+      : findContainer(over.id);
 
-    if (!activeContainer || !overContainer || activeContainer === overContainer) {
+    if (
+      !activeContainer ||
+      !overContainer ||
+      activeContainer === overContainer
+    ) {
       return;
     }
 
-    setTasks(prev => {
+    // Update local state immediately for smooth UI
+    setTasks((prev) => {
       const activeTask = prev[activeContainer].find(
-        task => task._id === active.id
+        (task) => task._id === active.id
       );
 
-      if (!activeTask) return prev;
-
-      // Remove from old container
-      const newPrev = {
+      return {
         ...prev,
         [activeContainer]: prev[activeContainer].filter(
-          task => task._id !== active.id
+          (task) => task._id !== active.id
         ),
+        [overContainer]: [
+          { ...activeTask, status: overContainer },
+          ...prev[overContainer],
+        ],
       };
-
-      // Add to new container
-      newPrev[overContainer] = [
-        ...prev[overContainer],
-        { ...activeTask, status: overContainer }
-      ];
-
-      return newPrev;
     });
   };
 
   const handleDragEnd = async (event) => {
     const { active, over } = event;
-    
-    if (!over) {
-      setActiveId(null);
-      return;
-    }
+    setActiveId(null);
+    setActiveTask(null);
 
-    const activeContainer = findTaskContainer(active.id);
-    const overContainer = STATUSES.includes(over.id) ? over.id : findTaskContainer(over.id);
+    if (!over) return;
+
+    const activeContainer = findContainer(active.id);
+    const overContainer = STATUSES.includes(over.id)
+      ? over.id
+      : findContainer(over.id);
 
     if (activeContainer !== overContainer) {
-      try {
-        await axios.put(`/api/tasks/${active.id}`, {
-          status: overContainer,
-        });
-      } catch (err) {
-        // Revert the change if the API call fails
-        console.error("Error updating task status:", err);
-        setError("Failed to update task status");
-        fetchTasks(); // Refresh the tasks to show the original state
-      }
+      // Update the database and handle any potential errors
+      await updateTaskStatus(active.id, overContainer, activeContainer);
     }
-
-    setActiveId(null);
   };
 
-  const handleTaskAdded = (newTask) => {
-    setTasks(prev => ({
-      ...prev,
-      pending: [...prev.pending, newTask],
-    }));
-  };
-
-  const handleDeleteTask = async (taskId, status) => {
+  const handleTaskAdded = async (taskData) => {
     try {
-      await axios.delete(`/api/tasks/${taskId}`);
-      setTasks(prev => ({
+      const response = await api.post("/tasks", taskData);
+      setTasks((prev) => ({
         ...prev,
-        [status]: prev[status].filter(task => task._id !== taskId),
+        pending: [response.data, ...prev.pending],
       }));
+      setError("");
     } catch (err) {
-      console.error("Error deleting task:", err);
+      setError("Failed to create task");
+      console.error("Error creating task:", err);
+    }
+  };
+
+  const handleDeleteClick = (taskId) => {
+    setTaskToDelete(taskId);
+    setDeleteConfirmOpen(true);
+  };
+
+  const handleDeleteConfirm = async () => {
+    if (!taskToDelete) return;
+
+    try {
+      await api.delete(`/tasks/${taskToDelete}`);
+
+      setTasks((prev) => {
+        const newTasks = { ...prev };
+        Object.keys(newTasks).forEach((status) => {
+          newTasks[status] = newTasks[status].filter(
+            (task) => task._id !== taskToDelete
+          );
+        });
+        return newTasks;
+      });
+
+      setError("");
+    } catch (err) {
       setError("Failed to delete task");
+      console.error("Error deleting task:", err);
+    } finally {
+      setDeleteConfirmOpen(false);
+      setTaskToDelete(null);
     }
   };
 
@@ -177,85 +247,106 @@ const TaskBoard = () => {
   return (
     <Container sx={{ py: 4 }}>
       <TaskForm onTaskAdded={handleTaskAdded} />
-      
+
       {error && (
-        <Alert severity="error" sx={{ mb: 2 }}>
+        <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError("")}>
           {error}
         </Alert>
       )}
 
-      <Box sx={{ mt: 4 }}>
-        <DndContext
-          sensors={sensors}
-          onDragStart={handleDragStart}
-          onDragOver={handleDragOver}
-          onDragEnd={handleDragEnd}
-          collisionDetection={rectIntersection}
-        >
-          <Box sx={{
+      {updateLoading && (
+        <Alert severity="info" sx={{ mb: 2 }}>
+          Updating task status...
+        </Alert>
+      )}
+
+      <DndContext
+        sensors={sensors}
+        onDragStart={handleDragStart}
+        onDragOver={handleDragOver}
+        onDragEnd={handleDragEnd}
+      >
+        <Box
+          sx={{
             display: "grid",
             gridTemplateColumns: { xs: "1fr", md: "repeat(3, 1fr)" },
-            gap: 2
-          }}>
-            {STATUSES.map((status) => (
-              <Paper
-                key={status}
-                id={status}
-                sx={{
-                  p: 2,
-                  bgcolor: columnColors[status],
-                  minHeight: 200,
-                  borderRadius: 2,
-                  display: 'flex',
-                  flexDirection: 'column'
-                }}
+            gap: 2,
+            mt: 4,
+          }}
+        >
+          {STATUSES.map((status) => (
+            <Paper
+              key={status}
+              id={status}
+              sx={{
+                p: 2,
+                bgcolor: columnColors[status],
+                minHeight: 200,
+                borderRadius: 2,
+              }}
+            >
+              <Typography
+                variant="h6"
+                sx={{ mb: 2, textTransform: "capitalize" }}
               >
-                <Typography variant="h6" sx={{ mb: 2, textTransform: "capitalize" }}>
-                  {status} ({tasks[status].length})
-                </Typography>
-                <SortableContext 
-                  items={tasks[status].map(task => task._id)}
-                  strategy={verticalListSortingStrategy}
-                >
-                  <Box sx={{ 
-                    display: "flex", 
-                    flexDirection: "column", 
-                    gap: 1,
-                    flexGrow: 1,
-                    minHeight: 100 
-                  }}>
-                    {tasks[status].map((task, index) => (
-                      <TaskCard
-                        key={task._id}
-                        task={task}
-                        index={index}
-                        onDelete={(taskId) => handleDeleteTask(taskId, status)}
-                      />
-                    ))}
-                  </Box>
-                </SortableContext>
-              </Paper>
-            ))}
-          </Box>
+                {status} ({tasks[status].length})
+              </Typography>
 
-          <DragOverlay>
-            {activeId && (
-              <Paper sx={{ 
-                p: 2, 
-                bgcolor: "background.paper", 
+              <SortableContext
+                items={tasks[status].map((task) => task._id)}
+                strategy={verticalListSortingStrategy}
+              >
+                <Box sx={{ display: "flex", flexDirection: "column", gap: 2 }}>
+                  {tasks[status].map((task) => (
+                    <TaskCard
+                      key={task._id}
+                      task={task}
+                      onDelete={() => handleDeleteClick(task._id)}
+                    />
+                  ))}
+                </Box>
+              </SortableContext>
+            </Paper>
+          ))}
+        </Box>
+
+        <DragOverlay>
+          {activeId && activeTask && (
+            <Paper
+              sx={{
+                p: 2,
+                bgcolor: "background.paper",
                 boxShadow: 3,
-                width: "300px" 
-              }}>
-                {Object.values(tasks)
-                  .flat()
-                  .find(task => task._id === activeId)?.title}
-              </Paper>
-            )}
-          </DragOverlay>
-        </DndContext>
-      </Box>
+                width: "300px",
+              }}
+            >
+              <Typography variant="subtitle1">{activeTask.title}</Typography>
+              <Typography variant="body2" color="text.secondary">
+                {activeTask.description}
+              </Typography>
+            </Paper>
+          )}
+        </DragOverlay>
+      </DndContext>
+
+      <Dialog
+        open={deleteConfirmOpen}
+        onClose={() => setDeleteConfirmOpen(false)}
+      >
+        <DialogTitle>Confirm Delete</DialogTitle>
+        <DialogContent>
+          <Typography>
+            Are you sure you want to delete this task? This action cannot be
+            undone.
+          </Typography>
+        </DialogContent>
+        <DialogActions>
+          <Button onClick={() => setDeleteConfirmOpen(false)}>Cancel</Button>
+          <Button onClick={handleDeleteConfirm} color="error">
+            Delete
+          </Button>
+        </DialogActions>
+      </Dialog>
     </Container>
   );
-};
-
-export default TaskBoard;
+}

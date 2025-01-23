@@ -1,27 +1,24 @@
 import React, { useState } from "react";
 import {
-  Box,
   Paper,
   Typography,
   TextField,
   Button,
+  Box,
   Alert,
 } from "@mui/material";
-import axios from "axios";
 
 const TaskForm = ({ onTaskAdded }) => {
   const [formData, setFormData] = useState({
     title: "",
     description: "",
   });
-
   const [error, setError] = useState("");
 
   const handleSubmit = async (e) => {
     e.preventDefault();
     try {
-      const res = await axios.post("/api/tasks", formData);
-      onTaskAdded(res.data);
+      await onTaskAdded(formData);
       setFormData({ title: "", description: "" });
       setError("");
     } catch (err) {
@@ -36,7 +33,7 @@ const TaskForm = ({ onTaskAdded }) => {
       </Typography>
 
       {error && (
-        <Alert severity="error" sx={{ mb: 2 }}>
+        <Alert severity="error" sx={{ mb: 2 }} onClose={() => setError("")}>
           {error}
         </Alert>
       )}
@@ -47,7 +44,6 @@ const TaskForm = ({ onTaskAdded }) => {
         sx={{ display: "flex", flexDirection: "column", gap: 2 }}
       >
         <TextField
-          id="title"
           label="Title"
           value={formData.title}
           onChange={(e) => setFormData({ ...formData, title: e.target.value })}
@@ -56,7 +52,6 @@ const TaskForm = ({ onTaskAdded }) => {
         />
 
         <TextField
-          id="description"
           label="Description"
           value={formData.description}
           onChange={(e) =>
@@ -75,4 +70,5 @@ const TaskForm = ({ onTaskAdded }) => {
     </Paper>
   );
 };
+
 export default TaskForm;

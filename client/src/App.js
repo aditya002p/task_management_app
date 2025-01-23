@@ -8,7 +8,6 @@ import {
 import { ThemeProvider, createTheme } from "@mui/material";
 import { AuthProvider, useAuth } from "./context/AuthContext";
 import Navbar from "./components/layout/Navbar";
-import Footer from "./components/layout/Footer";
 import Login from "./components/auth/Login";
 import Register from "./components/auth/Register";
 import ForgotPassword from "./components/auth/ForgotPassword";
@@ -61,7 +60,6 @@ const App = () => {
               <Route path="/" element={<Navigate to="/dashboard" />} />
             </Routes>
           </main>
-          <Footer />
         </div>
       </Router>
     </AuthProvider>
