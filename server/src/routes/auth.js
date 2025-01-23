@@ -7,7 +7,7 @@ const auth = require("../middleware/auth");
 const User = require("../models/User");
 const { OAuth2Client } = require("google-auth-library");
 
-const client = new OAuth2Client(process.env.GOOGLE_CLIENT_ID);
+const client = new OAuth2Client(process.env.REACT_APP_GOOGLE_CLIENT_ID);
 
 // @route   GET api/auth/user
 // @desc    Get authenticated user
