@@ -4,11 +4,6 @@ const cors = require("cors");
 const path = require("path");
 require("dotenv").config();
 
-// Import routes
-const authRoutes = require("./src/routes/auth");
-const taskRoutes = require("./src/routes/tasks");
-const postRoutes = require("./src/routes/posts");
-
 // Create Express app
 const app = express();
 
@@ -55,10 +50,6 @@ const errorHandler = (err, req, res, next) => {
 // Init Middleware
 app.use(express.json({ extended: false }));
 app.use(cors());
-
-// Custom error handling for async routes
-const asyncHandler = (fn) => (req, res, next) =>
-  Promise.resolve(fn(req, res, next)).catch(next);
 
 // Define Routes with async error handling
 app.use("/api/auth", require("./src/routes/auth"));

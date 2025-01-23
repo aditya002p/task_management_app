@@ -18,6 +18,7 @@ import {
   useSensors,
   useSensor,
   PointerSensor,
+  closestCorners,
 } from "@dnd-kit/core";
 import {
   SortableContext,
@@ -28,7 +29,7 @@ import api from "../../utils/api";
 import TaskForm from "./TaskForm";
 import TaskCard from "./TaskCard";
 
-const STATUSES = ["pending", "completed", "done"];
+const STATUS_ORDER = ["pending", "completed", "done"];
 
 const columnColors = {
   done: "#f0fdf4",
@@ -49,7 +50,7 @@ export default function TaskBoard() {
   const [activeTask, setActiveTask] = useState(null);
   const [deleteConfirmOpen, setDeleteConfirmOpen] = useState(false);
   const [taskToDelete, setTaskToDelete] = useState(null);
-  const [updateLoading, setUpdateLoading] = useState(false);
+  const [isDragging, setIsDragging] = useState(false);
 
   const sensors = useSensors(
     useSensor(PointerSensor, {
@@ -84,110 +85,76 @@ export default function TaskBoard() {
     }
   };
 
-  const findContainer = (id) => {
-    if (!id) return null;
-    return STATUSES.find((status) =>
-      tasks[status].some((task) => task._id === id)
-    );
-  };
-
   const handleDragStart = (event) => {
     const { active } = event;
     setActiveId(active.id);
-    const activeContainer = findContainer(active.id);
-    const task = tasks[activeContainer].find((task) => task._id === active.id);
-    setActiveTask(task);
-  };
+    setIsDragging(true);
 
-  const updateTaskStatus = async (taskId, newStatus, oldStatus) => {
-    setUpdateLoading(true);
-    try {
-      // Optimistically update the UI
-      setTasks((prev) => {
-        const task = prev[oldStatus].find((t) => t._id === taskId);
-        if (!task) return prev;
-
-        return {
-          ...prev,
-          [oldStatus]: prev[oldStatus].filter((t) => t._id !== taskId),
-          [newStatus]: [{ ...task, status: newStatus }, ...prev[newStatus]],
-        };
-      });
-
-      // Make API call
-      await api.put(`/tasks/${taskId}`, { status: newStatus });
-    } catch (err) {
-      // Revert the state if API call fails
-      setError("Failed to update task status");
-      console.error("Error updating task status:", err);
-
-      // Revert the optimistic update
-      setTasks((prev) => {
-        const task = prev[newStatus].find((t) => t._id === taskId);
-        if (!task) return prev;
-
-        return {
-          ...prev,
-          [newStatus]: prev[newStatus].filter((t) => t._id !== taskId),
-          [oldStatus]: [{ ...task, status: oldStatus }, ...prev[oldStatus]],
-        };
-      });
-    } finally {
-      setUpdateLoading(false);
+    const container = findTaskContainer(active.id);
+    if (container) {
+      setActiveTask(tasks[container.status][container.taskIndex]);
     }
   };
 
-  const handleDragOver = (event) => {
-    const { active, over } = event;
-    if (!over) return;
-
-    const activeContainer = findContainer(active.id);
-    const overContainer = STATUSES.includes(over.id)
-      ? over.id
-      : findContainer(over.id);
-
-    if (
-      !activeContainer ||
-      !overContainer ||
-      activeContainer === overContainer
-    ) {
-      return;
+  const findTaskContainer = (taskId) => {
+    for (const status of STATUS_ORDER) {
+      const taskIndex = tasks[status].findIndex((task) => task._id === taskId);
+      if (taskIndex !== -1) return { status, taskIndex };
     }
-
-    // Update local state immediately for smooth UI
-    setTasks((prev) => {
-      const activeTask = prev[activeContainer].find(
-        (task) => task._id === active.id
-      );
-
-      return {
-        ...prev,
-        [activeContainer]: prev[activeContainer].filter(
-          (task) => task._id !== active.id
-        ),
-        [overContainer]: [
-          { ...activeTask, status: overContainer },
-          ...prev[overContainer],
-        ],
-      };
-    });
+    return null;
   };
 
   const handleDragEnd = async (event) => {
     const { active, over } = event;
     setActiveId(null);
     setActiveTask(null);
+    setIsDragging(false);
 
     if (!over) return;
 
-    const activeContainer = findContainer(active.id);
-    const overContainer = STATUSES.includes(over.id)
-      ? over.id
-      : findContainer(over.id);
+    const activeContainer = findTaskContainer(active.id);
+    const overContainer = STATUS_ORDER.includes(over.id)
+      ? { status: over.id }
+      : findTaskContainer(over.id);
 
-    if (activeContainer !== overContainer) {
-      // Update the database and handle any potential errors
-      await updateTaskStatus(active.id, overContainer, activeContainer);
+    if (!activeContainer || !overContainer) return;
+
+    // Determine the new status
+    const newStatus = STATUS_ORDER.includes(over.id)
+      ? over.id
+      : overContainer.status;
+
+    // If status is different, update the task
+    if (activeContainer.status !== newStatus) {
+      try {
+        // Update task status in the database
+        await api.put(`/tasks/${active.id}`, { status: newStatus });
+
+        // Update local state
+        const updatedTasks = { ...tasks };
+
+        // Remove task from old status
+        const movedTask = updatedTasks[activeContainer.status].find(
+          (task) => task._id === active.id
+        );
+
+        updatedTasks[activeContainer.status] = updatedTasks[
+          activeContainer.status
+        ].filter((task) => task._id !== active.id);
+
+        // Add to new status
+        updatedTasks[newStatus] = [
+          { ...movedTask, status: newStatus },
+          ...updatedTasks[newStatus],
+        ];
+
+        // Update state
+        setTasks(updatedTasks);
+      } catch (err) {
+        console.error("Failed to update task status:", err);
+        setError("Failed to move task");
+        fetchTasks(); // Revert to server state
+      }
     }
   };
 
@@ -254,17 +221,12 @@ export default function TaskBoard() {
         </Alert>
       )}
 
-      {updateLoading && (
-        <Alert severity="info" sx={{ mb: 2 }}>
-          Updating task status...
-        </Alert>
-      )}
-
       <DndContext
         sensors={sensors}
+        collisionDetection={closestCorners}
         onDragStart={handleDragStart}
-        onDragOver={handleDragOver}
         onDragEnd={handleDragEnd}
+        aria-label="Task Board"
       >
         <Box
           sx={{
@@ -274,15 +236,19 @@ export default function TaskBoard() {
             mt: 4,
           }}
         >
-          {STATUSES.map((status) => (
+          {STATUS_ORDER.map((status) => (
             <Paper
               key={status}
               id={status}
+              role="region"
+              aria-label={`${status} tasks`}
               sx={{
                 p: 2,
                 bgcolor: columnColors[status],
                 minHeight: 200,
                 borderRadius: 2,
+                opacity: isDragging ? 0.7 : 1,
+                transition: "opacity 0.2s",
               }}
             >
               <Typography

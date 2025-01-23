@@ -1,7 +1,14 @@
 import React from "react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
-import { Card, CardContent, Typography, IconButton, Box } from "@mui/material";
+import {
+  Card,
+  CardContent,
+  Typography,
+  IconButton,
+  Box,
+  Tooltip,
+} from "@mui/material";
 import DeleteIcon from "@mui/icons-material/Delete";
 
 const TaskCard = ({ task, onDelete }) => {
@@ -23,6 +30,10 @@ const TaskCard = ({ task, onDelete }) => {
         cursor: "grab",
         "&:active": { cursor: "grabbing" },
         position: "relative",
+        boxShadow: 1,
+        "&:hover": {
+          boxShadow: 3,
+        },
       }}
       {...attributes}
       {...listeners}
@@ -36,31 +47,54 @@ const TaskCard = ({ task, onDelete }) => {
           }}
         >
           <Box sx={{ flexGrow: 1, pr: 2 }}>
-            <Typography variant="h6" component="div">
+            <Typography
+              variant="h6"
+              component="div"
+              sx={{
+                fontWeight: 600,
+                mb: 0.5,
+                textOverflow: "ellipsis",
+                overflow: "hidden",
+                whiteSpace: "nowrap",
+              }}
+            >
               {task.title}
             </Typography>
-            <Typography variant="body2" color="text.secondary" sx={{ mt: 1 }}>
+            <Typography
+              variant="body2"
+              color="text.secondary"
+              sx={{
+                mb: 1,
+                textOverflow: "ellipsis",
+                overflow: "hidden",
+                display: "-webkit-box",
+                WebkitLineClamp: 2,
+                WebkitBoxOrient: "vertical",
+              }}
+            >
               {task.description}
             </Typography>
             <Typography
               variant="caption"
               color="text.secondary"
-              sx={{ mt: 1, display: "block" }}
+              sx={{ display: "block" }}
             >
               Created: {new Date(task.date).toLocaleDateString()}
             </Typography>
           </Box>
-          <IconButton
-            onClick={(e) => {
-              e.stopPropagation();
-              onDelete();
-            }}
-            size="small"
-            color="error"
-            sx={{ flexShrink: 0 }}
-          >
-            <DeleteIcon />
-          </IconButton>
+          <Tooltip title="Delete Task">
+            <IconButton
+              onClick={(e) => {
+                e.stopPropagation();
+                onDelete();
+              }}
+              size="small"
+              color="error"
+              sx={{ flexShrink: 0 }}
+            >
+              <DeleteIcon fontSize="small" />
+            </IconButton>
+          </Tooltip>
         </Box>
       </CardContent>
     </Card>
