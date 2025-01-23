@@ -6,14 +6,8 @@ require("dotenv").config();
 
 const app = express();
 
-// Connect to database only if not already connected
-let isConnected = false;
-const initDB = async () => {
-  if (!isConnected) {
-    await connectDB();
-    isConnected = true;
-  }
-};
+// Connect to database
+connectDB();
 
 // Error Handler Middleware
 const errorHandler = (err, req, res, next) => {
@@ -64,16 +58,13 @@ app.use("/api/posts", require("./src/routes/posts"));
 // Global Error Handling Middleware
 app.use(errorHandler);
 
-// Serve static assets in production
-if (process.env.NODE_ENV === "production") {
-  app.use(express.static("client/build"));
-  app.get("*", (req, res) => {
-    res.sendFile(path.resolve(__dirname, "client", "build", "index.html"));
-  });
-}
+// Serve static files from React app
+app.use(express.static(path.join(__dirname, "client/build")));
 
-// Vercel serverless function export
-module.exports = async (req, res) => {
-  await initDB();
-  return app(req, res);
-};
+// The "catchall" handler: for any request that doesn't
+// match one above, send back React's index.html file.
+app.get("*", (req, res) => {
+  res.sendFile(path.join(__dirname, "client/build", "index.html"));
+});
+
+module.exports = app;
