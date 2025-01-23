@@ -67,17 +67,5 @@ if (process.env.NODE_ENV === "production") {
   });
 }
 
-const PORT = process.env.PORT || 6000;
-
-// Handle unhandled promise rejections
-process.on("unhandledRejection", (err) => {
-  console.log("UNHANDLED REJECTION! 💥 Shutting down...");
-  console.log(err.name, err.message);
-  server.close(() => {
-    process.exit(1);
-  });
-});
-
-const server = app.listen(PORT, () =>
-  console.log(`Server running on port ${PORT}`)
-);
+// Export the app (for Vercel)
+module.exports = app;
