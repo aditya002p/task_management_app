@@ -117,7 +117,7 @@ const Login = () => {
 
           <div className="mt-6 text-center">
             <Link to="/register" className="text-blue-600 hover:text-blue-500">
-              Don't have an account? Sign up
+              Don't have an account?
             </Link>
           </div>
           <div className="mt-2 text-center">
