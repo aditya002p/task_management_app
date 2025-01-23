@@ -4,11 +4,16 @@ const cors = require("cors");
 const path = require("path");
 require("dotenv").config();
 
-// Create Express app
 const app = express();
 
-// Connect Database
-connectDB();
+// Connect to database only if not already connected
+let isConnected = false;
+const initDB = async () => {
+  if (!isConnected) {
+    await connectDB();
+    isConnected = true;
+  }
+};
 
 // Error Handler Middleware
 const errorHandler = (err, req, res, next) => {
@@ -47,11 +52,11 @@ const errorHandler = (err, req, res, next) => {
   });
 };
 
-// Init Middleware
+// Middleware
 app.use(express.json({ extended: false }));
 app.use(cors());
 
-// Define Routes with async error handling
+// Routes
 app.use("/api/auth", require("./src/routes/auth"));
 app.use("/api/tasks", require("./src/routes/tasks"));
 app.use("/api/posts", require("./src/routes/posts"));
@@ -67,5 +72,8 @@ if (process.env.NODE_ENV === "production") {
   });
 }
 
-// Export the app (for Vercel)
-module.exports = app;
+// Vercel serverless function export
+module.exports = async (req, res) => {
+  await initDB();
+  return app(req, res);
+};
